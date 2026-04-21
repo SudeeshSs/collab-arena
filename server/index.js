@@ -2,12 +2,13 @@ require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const fs = require('fs');
 
+const { connectDB } = require('./store/db');
 const authRoutes = require('./routes/auth');
 const roomRoutes = require('./routes/rooms');
 const userRoutes = require('./routes/users');
@@ -17,73 +18,84 @@ const socketHandler = require('./socket/socketHandler');
 const app = express();
 const server = http.createServer(app);
 
-// ─── Socket.io Setup ──────────────────────────────────────────────────────────
 const io = new Server(server, {
-  cors: {
-    origin: process.env.CLIENT_URL || '*',
-    methods: ['GET', 'POST'],
-    credentials: true
-  }
+  cors: { origin: '*', methods: ['GET', 'POST'], credentials: true },
+  pingTimeout: 60000,
+  pingInterval: 25000,
 });
 
-// ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(helmet({
-  contentSecurityPolicy: false // We serve the client too
-}));
-app.use(cors({
-  origin: process.env.CLIENT_URL || '*',
-  credentials: true
-}));
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 200, standardHeaders: true, legacyHeaders: false }));
+app.use('/api/auth/', rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
-  message: { error: 'Too many requests, please try again later.' }
+// Health check
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    uptime: Math.floor(process.uptime()),
+    db: require('./store/db').isUsingMongo() ? 'mongodb' : 'memory',
+    timestamp: new Date().toISOString()
+  });
 });
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 20,
-  message: { error: 'Too many auth attempts, please try again later.' }
-});
 
-app.use('/api/', limiter);
-app.use('/api/auth/', authLimiter);
-
-// ─── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/rooms', roomRoutes);
 app.use('/api/users', userRoutes);
 
-// ─── Serve Static Client ──────────────────────────────────────────────────────
-app.use(express.static(path.join(__dirname, '../client/public')));
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../client/public/index.html'));
-});
+// --- Resolve client path robustly (works locally AND on Railway) ---
+// server/index.js lives at:  <root>/server/index.js
+// client lives at:           <root>/client/public/
+const possibleClientPaths = [
+  path.join(__dirname, '../client/public'),      // running from root: node server/index.js
+  path.join(__dirname, '../../client/public'),   // running from server/: node index.js
+  path.join(process.cwd(), 'client/public'),     // Railway working directory
+];
 
-// ─── Socket Authentication ────────────────────────────────────────────────────
+let clientPath = null;
+for (const p of possibleClientPaths) {
+  if (fs.existsSync(path.join(p, 'index.html'))) {
+    clientPath = p;
+    break;
+  }
+}
+
+if (clientPath) {
+  console.log(`✅ Serving static files from: ${clientPath}`);
+  app.use(express.static(clientPath));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(clientPath, 'index.html'));
+  });
+} else {
+  console.warn('⚠️  Could not find client/public folder. API only mode.');
+  app.get('/', (req, res) => res.json({ status: 'CodeArena API running', health: '/health' }));
+}
+
 io.use(authenticateSocket);
-
-// ─── Socket Handler ───────────────────────────────────────────────────────────
 socketHandler(io);
 
-// ─── Database Connection ──────────────────────────────────────────────────────
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/collab-arena';
+const PORT = process.env.PORT || 5000;
 
-mongoose.connect(MONGO_URI)
-  .then(() => {
-    console.log('✅ MongoDB connected');
-    const PORT = process.env.PORT || 5000;
-    server.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📡 Socket.io ready`);
-    });
-  })
-  .catch(err => {
-    console.error('❌ MongoDB connection error:', err);
-    process.exit(1);
+async function start() {
+  await connectDB();
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n🚀 CodeArena live on port ${PORT}`);
+    console.log(`   Local:  http://localhost:${PORT}`);
+    console.log(`   Health: http://localhost:${PORT}/health\n`);
   });
+}
 
-module.exports = { app, io };
+process.on('SIGTERM', () => server.close(() => process.exit(0)));
+process.on('SIGINT',  () => server.close(() => process.exit(0)));
+
+// Catch uncaught errors so app never crashes silently
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
+});
+
+start();
