@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CodeArena — Live Collaboration</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- CodeMirror -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css" />
+
+  <!-- Socket.io -->
+  <script src="/socket.io/socket.io.js"></script>
+
+  <!-- JSZip -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <!-- CodeMirror -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!--  AUTH SCREEN                                                           -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div id="auth-screen" class="screen active">
+    <div class="auth-bg">
+      <div class="auth-grid"></div>
+      <div class="auth-glow"></div>
+    </div>
+
+    <div class="auth-container">
+      <div class="auth-brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 40 40" fill="none">
+            <rect x="2" y="2" width="16" height="16" rx="2" fill="var(--html-color)"/>
+            <rect x="22" y="2" width="16" height="16" rx="2" fill="var(--css-color)"/>
+            <rect x="2" y="22" width="16" height="16" rx="2" fill="var(--js-color)"/>
+            <rect x="22" y="22" width="16" height="16" rx="2" fill="var(--accent)"/>
+          </svg>
+        </div>
+        <h1 class="brand-name">CodeArena</h1>
+        <p class="brand-tagline">Real-time collaborative coding</p>
+      </div>
+
+      <div class="auth-card">
+        <div class="auth-tabs">
+          <button class="auth-tab active" data-tab="login">Sign In</button>
+          <button class="auth-tab" data-tab="register">Register</button>
+        </div>
+
+        <!-- Login Form -->
+        <form id="login-form" class="auth-form active">
+          <div class="field-group">
+            <label class="field-label">Email</label>
+            <input type="email" id="login-email" class="field-input" placeholder="you@example.com" required />
+          </div>
+          <div class="field-group">
+            <label class="field-label">Password</label>
+            <input type="password" id="login-password" class="field-input" placeholder="••••••••" required />
+          </div>
+          <div id="login-error" class="form-error hidden"></div>
+          <button type="submit" class="btn-primary">
+            <span>Enter Arena</span>
+            <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+          </button>
+        </form>
+
+        <!-- Register Form -->
+        <form id="register-form" class="auth-form">
+          <div class="field-group">
+            <label class="field-label">Username</label>
+            <input type="text" id="reg-username" class="field-input" placeholder="coolcoder42" required />
+          </div>
+          <div class="field-group">
+            <label class="field-label">Email</label>
+            <input type="email" id="reg-email" class="field-input" placeholder="you@example.com" required />
+          </div>
+          <div class="field-group">
+            <label class="field-label">Password</label>
+            <input type="password" id="reg-password" class="field-input" placeholder="Min 6 characters" required />
+          </div>
+          <div id="register-error" class="form-error hidden"></div>
+          <button type="submit" class="btn-primary">
+            <span>Create Account</span>
+            <svg viewBox="0 0 20 20" fill="currentColor"><path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z"/></svg>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!--  LOBBY SCREEN                                                          -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div id="lobby-screen" class="screen">
+    <header class="lobby-header">
+      <div class="header-brand">
+        <div class="brand-icon small">
+          <svg viewBox="0 0 40 40" fill="none">
+            <rect x="2" y="2" width="16" height="16" rx="2" fill="var(--html-color)"/>
+            <rect x="22" y="2" width="16" height="16" rx="2" fill="var(--css-color)"/>
+            <rect x="2" y="22" width="16" height="16" rx="2" fill="var(--js-color)"/>
+            <rect x="22" y="22" width="16" height="16" rx="2" fill="var(--accent)"/>
+          </svg>
+        </div>
+        <span>CodeArena</span>
+      </div>
+      <div class="header-user">
+        <div class="user-avatar" id="header-avatar"></div>
+        <span id="header-username"></span>
+        <button id="logout-btn" class="btn-ghost">Sign Out</button>
+      </div>
+    </header>
+
+    <main class="lobby-main">
+      <div class="lobby-hero">
+        <h2>Welcome back, <span id="lobby-username"></span></h2>
+        <p>Start or join a collaborative session</p>
+      </div>
+
+      <div class="lobby-cards">
+        <!-- Create Room -->
+        <div class="lobby-card">
+          <div class="card-icon" style="background: var(--html-color)20; color: var(--html-color)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+          </div>
+          <h3>Create Room</h3>
+          <p>Start a new collaboration session and invite others</p>
+          <form id="create-room-form">
+            <input type="text" id="room-name-input" class="field-input" placeholder="Room name..." maxlength="50" required />
+            <div class="role-selector">
+              <p class="role-label">Your role</p>
+              <div class="role-pills">
+                <label class="role-pill" style="--rc: var(--html-color)">
+                  <input type="radio" name="create-role" value="html" checked />
+                  <span>HTML</span>
+                </label>
+                <label class="role-pill" style="--rc: var(--css-color)">
+                  <input type="radio" name="create-role" value="css" />
+                  <span>CSS</span>
+                </label>
+                <label class="role-pill" style="--rc: var(--js-color)">
+                  <input type="radio" name="create-role" value="javascript" />
+                  <span>JS</span>
+                </label>
+              </div>
+            </div>
+            <div id="create-error" class="form-error hidden"></div>
+            <button type="submit" class="btn-primary">Create Room</button>
+          </form>
+        </div>
+
+        <!-- Join Room -->
+        <div class="lobby-card">
+          <div class="card-icon" style="background: var(--css-color)20; color: var(--css-color)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5M15 12H3"/>
+            </svg>
+          </div>
+          <h3>Join Room</h3>
+          <p>Enter a room ID to collaborate with others</p>
+          <form id="join-room-form">
+            <input type="text" id="room-id-input" class="field-input mono" placeholder="Room ID (e.g. A1B2C3D4)" maxlength="8" style="text-transform: uppercase" required />
+            <div id="available-roles-display" class="available-roles hidden"></div>
+            <div class="role-selector">
+              <p class="role-label">Your role</p>
+              <div class="role-pills">
+                <label class="role-pill" style="--rc: var(--html-color)">
+                  <input type="radio" name="join-role" value="html" checked />
+                  <span>HTML</span>
+                </label>
+                <label class="role-pill" style="--rc: var(--css-color)">
+                  <input type="radio" name="join-role" value="css" />
+                  <span>CSS</span>
+                </label>
+                <label class="role-pill" style="--rc: var(--js-color)">
+                  <input type="radio" name="join-role" value="javascript" />
+                  <span>JS</span>
+                </label>
+              </div>
+            </div>
+            <div id="join-error" class="form-error hidden"></div>
+            <button type="submit" class="btn-primary">Join Room</button>
+          </form>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!--  ARENA SCREEN (Main Editor)                                            -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div id="arena-screen" class="screen">
+    <!-- Top Bar -->
+    <div class="arena-topbar">
+      <div class="topbar-left">
+        <button id="leave-room-btn" class="btn-icon" title="Leave room">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
+          </svg>
+        </button>
+        <div class="topbar-room-info">
+          <span class="topbar-room-name" id="topbar-room-name">Room</span>
+          <span class="topbar-room-id" id="topbar-room-id"></span>
+        </div>
+      </div>
+
+      <div class="topbar-users" id="topbar-users"></div>
+
+      <div class="topbar-right">
+        <span class="role-badge" id="my-role-badge"></span>
+        <button id="toggle-preview-btn" class="btn-icon" title="Toggle preview">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+          </svg>
+        </button>
+        <button id="export-btn" class="btn-icon accent" title="Export ZIP">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+        </button>
+        <button id="copy-room-id-btn" class="btn-icon" title="Copy room link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Layout -->
+    <div class="arena-layout" id="arena-layout">
+
+      <!-- Left Sidebar: File tree + Chat -->
+      <div class="arena-sidebar">
+        <!-- File Tree -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+            </svg>
+            Files
+          </div>
+          <div class="file-tree">
+            <div class="file-item active" data-role="html">
+              <span class="file-icon html-icon">&lt;/&gt;</span>
+              <span>index.html</span>
+              <span class="file-user" id="file-user-html"></span>
+            </div>
+            <div class="file-item" data-role="css">
+              <span class="file-icon css-icon">#</span>
+              <span>style.css</span>
+              <span class="file-user" id="file-user-css"></span>
+            </div>
+            <div class="file-item" data-role="javascript">
+              <span class="file-icon js-icon">JS</span>
+              <span>script.js</span>
+              <span class="file-user" id="file-user-javascript"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Online Users -->
+        <div class="sidebar-section">
+          <div class="sidebar-section-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+            </svg>
+            Collaborators
+          </div>
+          <div class="collaborators-list" id="collaborators-list"></div>
+        </div>
+
+        <!-- Voice Chat -->
+        <div class="sidebar-section voice-section">
+          <div class="sidebar-section-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3zM19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/>
+            </svg>
+            Voice
+          </div>
+          <div class="voice-controls">
+            <button id="voice-join-btn" class="btn-voice join">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
+              </svg>
+              Join Voice
+            </button>
+            <button id="voice-mute-btn" class="btn-voice mute hidden">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
+              </svg>
+              Mute
+            </button>
+            <button id="voice-leave-btn" class="btn-voice leave hidden">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 005.12 2.12M15 9.34V4a3 3 0 00-5.94-.6M17 16.95A7 7 0 015 12v-2m14 0v2a7 7 0 01-.11 1.23M12 19v4M8 23h8"/>
+              </svg>
+              Leave
+            </button>
+          </div>
+          <div class="voice-peers" id="voice-peers"></div>
+        </div>
+
+        <!-- Chat -->
+        <div class="sidebar-section chat-section">
+          <div class="sidebar-section-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+            </svg>
+            Chat
+          </div>
+          <div class="chat-messages" id="chat-messages"></div>
+          <div class="chat-input-wrap">
+            <input type="text" id="chat-input" class="chat-input" placeholder="Message..." maxlength="500" />
+            <button id="chat-send-btn" class="chat-send">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Editors Area -->
+      <div class="arena-editors" id="arena-editors">
+        <!-- Editor Tabs -->
+        <div class="editor-tabs">
+          <button class="editor-tab active" data-role="html">
+            <span class="tab-dot html-dot"></span>index.html
+          </button>
+          <button class="editor-tab" data-role="css">
+            <span class="tab-dot css-dot"></span>style.css
+          </button>
+          <button class="editor-tab" data-role="javascript">
+            <span class="tab-dot js-dot"></span>script.js
+          </button>
+          <div class="sync-indicator" id="sync-indicator">
+            <span class="sync-dot"></span>
+            <span id="sync-text">Live</span>
+          </div>
+        </div>
+
+        <!-- Editors -->
+        <div class="editors-container">
+          <div class="editor-panel active" id="editor-html">
+            <div class="editor-role-banner html-banner">
+              <span>&lt;/&gt; HTML</span>
+              <span id="html-editor-owner" class="editor-owner"></span>
+            </div>
+            <textarea id="cm-html"></textarea>
+          </div>
+          <div class="editor-panel" id="editor-css">
+            <div class="editor-role-banner css-banner">
+              <span># CSS</span>
+              <span id="css-editor-owner" class="editor-owner"></span>
+            </div>
+            <textarea id="cm-css"></textarea>
+          </div>
+          <div class="editor-panel" id="editor-javascript">
+            <div class="editor-role-banner js-banner">
+              <span>JS JavaScript</span>
+              <span id="javascript-editor-owner" class="editor-owner"></span>
+            </div>
+            <textarea id="cm-javascript"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Preview Panel -->
+      <div class="arena-preview" id="arena-preview">
+        <div class="preview-header">
+          <span>Preview</span>
+          <div class="preview-controls">
+            <button id="refresh-preview-btn" class="btn-icon-sm" title="Refresh">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+              </svg>
+            </button>
+            <button id="close-preview-btn" class="btn-icon-sm" title="Close preview">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <iframe
+          id="preview-frame"
+          sandbox="allow-scripts allow-modals"
+          title="Live Preview"
+        ></iframe>
+      </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div class="arena-statusbar">
+      <span id="status-role"></span>
+      <span id="status-room"></span>
+      <span id="status-connection" class="status-connected">● Connected</span>
+      <span id="status-saved">Auto-saved</span>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
