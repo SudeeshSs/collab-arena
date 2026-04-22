@@ -44,6 +44,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/rooms', roomRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/admin', require('./routes/admin'));
 
 // --- Resolve client path robustly (works locally AND on Railway) ---
 // server/index.js lives at:  <root>/server/index.js
