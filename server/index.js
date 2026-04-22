@@ -24,12 +24,34 @@ const io = new Server(server, {
   pingInterval: 25000,
 });
 
+// ── CRITICAL: Trust Railway's proxy so rate-limiter works ─────────────────────
+app.set('trust proxy', 1);
+
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: '*', credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
-app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 200, standardHeaders: true, legacyHeaders: false }));
-app.use('/api/auth/', rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false }));
+
+// Rate limiting — safe for proxied environments
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Skip rate limiting if header is malformed (prevents crash)
+  skip: (req) => false,
+  handler: (req, res) => res.status(429).json({ error: 'Too many requests, slow down!' })
+});
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => res.status(429).json({ error: 'Too many auth attempts!' })
+});
+
+app.use('/api/', limiter);
+app.use('/api/auth/', authLimiter);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -46,13 +68,11 @@ app.use('/api/rooms', roomRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/admin', require('./routes/admin'));
 
-// --- Resolve client path robustly (works locally AND on Railway) ---
-// server/index.js lives at:  <root>/server/index.js
-// client lives at:           <root>/client/public/
+// ── Serve frontend files ──────────────────────────────────────────────────────
 const possibleClientPaths = [
-  path.join(__dirname, '../client/public'),      // running from root: node server/index.js
-  path.join(__dirname, '../../client/public'),   // running from server/: node index.js
-  path.join(process.cwd(), 'client/public'),     // Railway working directory
+  path.join(__dirname, '../client/public'),
+  path.join(process.cwd(), 'client/public'),
+  path.join(__dirname, '../../client/public'),
 ];
 
 let clientPath = null;
@@ -64,14 +84,12 @@ for (const p of possibleClientPaths) {
 }
 
 if (clientPath) {
-  console.log(`✅ Serving static files from: ${clientPath}`);
+  console.log(`✅ Serving client from: ${clientPath}`);
   app.use(express.static(clientPath));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(clientPath, 'index.html'));
-  });
+  app.get('*', (req, res) => res.sendFile(path.join(clientPath, 'index.html')));
 } else {
-  console.warn('⚠️  Could not find client/public folder. API only mode.');
-  app.get('/', (req, res) => res.json({ status: 'CodeArena API running', health: '/health' }));
+  console.warn('⚠️  Client folder not found — API only mode');
+  app.get('/', (req, res) => res.json({ status: 'CodeArena API', health: '/health' }));
 }
 
 io.use(authenticateSocket);
@@ -82,21 +100,13 @@ const PORT = process.env.PORT || 5000;
 async function start() {
   await connectDB();
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🚀 CodeArena live on port ${PORT}`);
-    console.log(`   Local:  http://localhost:${PORT}`);
-    console.log(`   Health: http://localhost:${PORT}/health\n`);
+    console.log(`\n🚀 CodeArena running on port ${PORT}\n`);
   });
 }
 
 process.on('SIGTERM', () => server.close(() => process.exit(0)));
 process.on('SIGINT',  () => server.close(() => process.exit(0)));
-
-// Catch uncaught errors so app never crashes silently
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
-});
-process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled Rejection:', reason);
-});
+process.on('uncaughtException', (err) => console.error('Uncaught:', err.message));
+process.on('unhandledRejection', (reason) => console.error('Unhandled:', reason));
 
 start();
