@@ -1,34 +1,26 @@
 /**
- * db.js — Smart Database Layer
- * ONLY loads mongoose if MONGO_URI is set. Otherwise pure in-memory.
- * This prevents the "buffering timed out" mongoose error completely.
+ * db.js — Database layer
+ * ONLY uses MongoDB if MONGO_URI is explicitly set AND non-empty.
+ * Otherwise uses pure in-memory store — no mongoose imported at all.
  */
 
 let usingMongo = false;
 
 async function connectDB() {
   const uri = process.env.MONGO_URI;
-
-  // If no URI set, skip mongoose entirely — never even require() it
-  if (!uri || uri.trim() === '') {
-    console.log('⚠️  No MONGO_URI set — using in-memory store');
-    console.log('   Data resets on restart. Add MONGO_URI to Railway Variables for persistence.');
+  if (!uri || uri.trim() === '' || uri === 'undefined') {
+    console.log('⚠️  No MONGO_URI — using in-memory store');
+    usingMongo = false;
     return false;
   }
-
   try {
-    // Only require mongoose if we actually have a URI
     const mongoose = require('mongoose');
-    await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 8000,
-      connectTimeoutMS: 8000,
-    });
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 8000 });
     usingMongo = true;
-    console.log('✅ MongoDB connected — persistent storage active');
+    console.log('✅ MongoDB connected');
     return true;
   } catch (err) {
-    console.log(`⚠️  MongoDB connection failed: ${err.message}`);
-    console.log('   Falling back to in-memory store — app will still work');
+    console.log(`⚠️  MongoDB failed: ${err.message} — using in-memory store`);
     usingMongo = false;
     return false;
   }
@@ -36,16 +28,18 @@ async function connectDB() {
 
 function isUsingMongo() { return usingMongo; }
 
-// ── In-memory store (always available) ───────────────────────────────────────
 const { Users: MemUsers, Rooms: MemRooms } = require('./memoryStore');
 
-// ── Mongoose models (only used when usingMongo = true) ────────────────────────
-function MongoUser() { return require('../models/User'); }
-function MongoRoom() { return require('../models/Room'); }
+// Only load mongo models when actually needed
+function MongoUser() {
+  if (!usingMongo) throw new Error('MongoDB not connected');
+  return require('../models/User');
+}
+function MongoRoom() {
+  if (!usingMongo) throw new Error('MongoDB not connected');
+  return require('../models/Room');
+}
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  USER API
-// ═══════════════════════════════════════════════════════════════════════════
 const UserDB = {
   async findByEmail(email) {
     if (!usingMongo) return MemUsers.findByEmail(email);
@@ -57,7 +51,7 @@ const UserDB = {
   },
   async findById(id) {
     if (!usingMongo) return MemUsers.findById(id);
-    return MongoUser().findById(id).select("-password");
+    return MongoUser().findById(id).select('-password');
   },
   async create(data) {
     if (!usingMongo) return MemUsers.create(data);
@@ -83,9 +77,6 @@ const UserDB = {
   }
 };
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  ROOM API
-// ═══════════════════════════════════════════════════════════════════════════
 const RoomDB = {
   async findByRoomId(roomId) {
     if (!usingMongo) return MemRooms.findByRoomId(roomId);
@@ -109,7 +100,7 @@ const RoomDB = {
     if (!usingMongo) return MemRooms.removeMember(roomId, userId);
     const room = await MongoRoom().findOne({ roomId: roomId.toUpperCase() });
     if (!room) return null;
-    room.members = room.members.filter(m => m.user.toString() !== userId.toString());
+    room.members = room.members.filter(m => String(m.user) !== String(userId));
     if (room.members.length === 0) room.isActive = false;
     await room.save();
     return room;
