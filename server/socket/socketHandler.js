@@ -1,27 +1,22 @@
-const Room = require('../models/Room');
+const { RoomDB } = require('../store/db');
 
-// Track active users per room: roomId -> Map(socketId -> {userId, username, role})
+// Track active users per room: roomId -> Map(socketId -> userInfo)
 const activeRooms = new Map();
 
 module.exports = (io) => {
   io.on('connection', (socket) => {
     const user = socket.user;
-    console.log(`🔌 Connected: ${user.username} (${socket.id})`);
+    console.log(`🔌 Connected: ${user.username}`);
 
-    // ─── Join Room ──────────────────────────────────────────────────────────
+    // ── Join Room ─────────────────────────────────────────────────────────────
     socket.on('room:join', async ({ roomId }) => {
       try {
-        const room = await Room.findOne({ roomId: roomId.toUpperCase(), isActive: true });
-        if (!room) {
-          return socket.emit('error', { message: 'Room not found' });
-        }
+        const room = await RoomDB.findByRoomId(roomId.toUpperCase());
+        if (!room) return socket.emit('error', { message: 'Room not found' });
 
-        const member = room.members.find(
-          m => m.user.toString() === user._id.toString()
-        );
-        if (!member) {
-          return socket.emit('error', { message: 'You are not a member of this room' });
-        }
+        const userId = String(user._id || user.id);
+        const member = room.members.find(m => String(m.user) === userId);
+        if (!member) return socket.emit('error', { message: 'You are not a member of this room' });
 
         // Leave any previous rooms
         for (const [rid, users] of activeRooms.entries()) {
@@ -35,23 +30,18 @@ module.exports = (io) => {
           }
         }
 
-        // Join Socket.io room
         socket.join(roomId);
         socket.currentRoom = roomId;
         socket.userRole = member.role;
 
-        // Track active users
-        if (!activeRooms.has(roomId)) {
-          activeRooms.set(roomId, new Map());
-        }
+        if (!activeRooms.has(roomId)) activeRooms.set(roomId, new Map());
         activeRooms.get(roomId).set(socket.id, {
           socketId: socket.id,
-          userId: user._id.toString(),
+          userId,
           username: user.username,
           role: member.role
         });
 
-        // Send current state to joining user
         socket.emit('room:joined', {
           roomId,
           role: member.role,
@@ -59,7 +49,6 @@ module.exports = (io) => {
           users: Array.from(activeRooms.get(roomId).values())
         });
 
-        // Notify others
         socket.to(roomId).emit('room:user-joined', {
           username: user.username,
           role: member.role,
@@ -73,46 +62,27 @@ module.exports = (io) => {
       }
     });
 
-    // ─── Code Change ────────────────────────────────────────────────────────
+    // ── Code Change ───────────────────────────────────────────────────────────
     socket.on('code:change', async ({ roomId, type, content }) => {
       if (!['html', 'css', 'javascript'].includes(type)) return;
-
-      // Verify the user has the right role
       if (socket.userRole !== type) {
         return socket.emit('error', { message: 'You cannot edit this section' });
       }
-
-      // Broadcast to all other users in room
       socket.to(roomId).emit('code:update', { type, content });
 
-      // Debounced save to DB (save every 5 seconds of inactivity)
-      clearTimeout(socket[`saveTimeout_${type}`]);
-      socket[`saveTimeout_${type}`] = setTimeout(async () => {
+      clearTimeout(socket[`save_${type}`]);
+      socket[`save_${type}`] = setTimeout(async () => {
         try {
-          await Room.findOneAndUpdate(
-            { roomId: roomId.toUpperCase() },
-            { [`code.${type}`]: content, lastActivity: new Date() }
-          );
+          await RoomDB.updateCode(roomId, type, content);
         } catch (err) {
-          console.error('Save code error:', err);
+          console.error('Save code error:', err.message);
         }
       }, 3000);
     });
 
-    // ─── Cursor Position ─────────────────────────────────────────────────────
-    socket.on('cursor:move', ({ roomId, line, ch }) => {
-      socket.to(roomId).emit('cursor:update', {
-        username: user.username,
-        role: socket.userRole,
-        line,
-        ch
-      });
-    });
-
-    // ─── Chat ────────────────────────────────────────────────────────────────
+    // ── Chat ──────────────────────────────────────────────────────────────────
     socket.on('chat:message', ({ roomId, message }) => {
       if (!message || message.length > 500) return;
-
       io.to(roomId).emit('chat:message', {
         username: user.username,
         role: socket.userRole,
@@ -121,41 +91,29 @@ module.exports = (io) => {
       });
     });
 
-    // ─── WebRTC Signaling ────────────────────────────────────────────────────
+    // ── WebRTC Signaling ──────────────────────────────────────────────────────
     socket.on('webrtc:offer', ({ roomId, targetSocketId, offer }) => {
-      io.to(targetSocketId).emit('webrtc:offer', {
-        fromSocketId: socket.id,
-        fromUsername: user.username,
-        offer
-      });
+      io.to(targetSocketId).emit('webrtc:offer', { fromSocketId: socket.id, fromUsername: user.username, offer });
     });
-
     socket.on('webrtc:answer', ({ targetSocketId, answer }) => {
-      io.to(targetSocketId).emit('webrtc:answer', {
-        fromSocketId: socket.id,
-        answer
-      });
+      io.to(targetSocketId).emit('webrtc:answer', { fromSocketId: socket.id, answer });
     });
-
     socket.on('webrtc:ice-candidate', ({ targetSocketId, candidate }) => {
-      io.to(targetSocketId).emit('webrtc:ice-candidate', {
-        fromSocketId: socket.id,
-        candidate
-      });
+      io.to(targetSocketId).emit('webrtc:ice-candidate', { fromSocketId: socket.id, candidate });
     });
-
     socket.on('voice:mute-status', ({ roomId, isMuted }) => {
-      socket.to(roomId).emit('voice:mute-status', {
-        socketId: socket.id,
-        username: user.username,
-        isMuted
-      });
+      socket.to(roomId).emit('voice:mute-status', { socketId: socket.id, username: user.username, isMuted });
     });
 
-    // ─── Disconnect ──────────────────────────────────────────────────────────
+    // ── Get Users ─────────────────────────────────────────────────────────────
+    socket.on('room:get-users', ({ roomId }) => {
+      const roomUsers = activeRooms.get(roomId);
+      socket.emit('room:users', { users: roomUsers ? Array.from(roomUsers.values()) : [] });
+    });
+
+    // ── Disconnect ────────────────────────────────────────────────────────────
     socket.on('disconnect', () => {
       console.log(`🔌 Disconnected: ${user.username}`);
-
       if (socket.currentRoom) {
         const roomUsers = activeRooms.get(socket.currentRoom);
         if (roomUsers) {
@@ -171,19 +129,7 @@ module.exports = (io) => {
           }
         }
       }
-
-      // Clear any pending save timeouts
-      ['html', 'css', 'javascript'].forEach(type => {
-        clearTimeout(socket[`saveTimeout_${type}`]);
-      });
-    });
-
-    // ─── Request Users List ──────────────────────────────────────────────────
-    socket.on('room:get-users', ({ roomId }) => {
-      const roomUsers = activeRooms.get(roomId);
-      socket.emit('room:users', {
-        users: roomUsers ? Array.from(roomUsers.values()) : []
-      });
+      ['html', 'css', 'javascript'].forEach(t => clearTimeout(socket[`save_${t}`]));
     });
   });
 };
