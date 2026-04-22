@@ -52,7 +52,15 @@ const Users = {
     }
     return null;
   },
-  async findById(id) { return store.users.get(id) || null; },
+  async findById(id) {
+    // Try direct lookup first, then scan (handles string vs object id mismatch)
+    const direct = store.users.get(String(id));
+    if (direct) return direct;
+    for (const u of store.users.values()) {
+      if (String(u._id) === String(id) || String(u.id) === String(id)) return u;
+    }
+    return null;
+  },
   async create({ username, email, password }) {
     const salt = await bcrypt.genSalt(12);
     const hashedPassword = await bcrypt.hash(password, salt);

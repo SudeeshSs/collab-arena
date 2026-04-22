@@ -57,7 +57,7 @@ const UserDB = {
   },
   async findById(id) {
     if (!usingMongo) return MemUsers.findById(id);
-    return MongoUser().findById(id).select('-password').lean();
+    return MongoUser().findById(id).select("-password");
   },
   async create(data) {
     if (!usingMongo) return MemUsers.create(data);
